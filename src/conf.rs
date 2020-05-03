@@ -4,6 +4,14 @@ use core::default::Default;
 use core::marker::PhantomData;
 
 use super::types;
+use super::Mpu9250;
+
+extern crate embedded_hal as hal;
+use hal::blocking::spi;
+use hal::blocking::i2c;
+use hal::digital::v2::OutputPin;
+
+use super::device::{SpiDevice, I2cDevice, Device};
 
 /// Controls the gyroscope and temperature sensor data rates and bandwidth.
 /// Can be either set to one of two FChoices, or to one of the 8
@@ -320,7 +328,6 @@ pub struct DmpFeatures {
     /// DMP output quaternion based on gyroscope only
     pub quat: bool,
 }
-#[cfg(feature = "dmp")]
 impl DmpFeatures {
     pub(crate) fn packet_size(self) -> usize {
         let mut size = 0;
@@ -620,11 +627,58 @@ impl<MODE> MpuConfig<MODE> {
     /// rate. NOTE: This register is only effective when dlpf mode used for
     /// GyroTempDataRate see [`GyroTempDataRate`].
     /// SampleRate = InternalSampleRate / (1 + SMPLRT_DIV).
-    ///
+    ///ave some time 
     /// [`GyroTempDataRate`]: ./enum.GyroTempDataRate.html
     pub fn sample_rate_divisor(&mut self, smplrt_div: u8) -> &mut Self {
         self.sample_rate_divisor = Some(smplrt_div);
         self
+    }
+
+    #[cfg(not(feature = "i2c"))]
+    /// Build new Mpu9250 from current configuration using the provided device
+    pub fn build<E, SPI, NCS>(self, spi: SPI, ncs: NCS) -> Mpu9250<SpiDevice<SPI, NCS>, MODE>
+        where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
+              NCS: OutputPin
+    {
+        let dev = SpiDevice::new(spi, ncs);
+        Mpu9250 {
+            dev,
+            mag_sensitivity_adjustments: [0.0; 3],
+            raw_mag_sensitivity_adjustments: [0; 3],
+            gyro_scale: self.gyro_scale.unwrap_or_default(),
+            accel_scale: self.accel_scale.unwrap_or_default(),
+            mag_scale: self.mag_scale.unwrap_or_default(),
+            gyro_temp_data_rate: self.gyro_temp_data_rate.unwrap_or_default(),
+            accel_data_rate: self.accel_data_rate.unwrap_or_default(),
+            sample_rate_divisor: self.sample_rate_divisor,
+            dmp_configuration: self.dmp_configuration,
+            packet_size: self.dmp_configuration.map_or(0, |cfg| cfg.features.packet_size()),
+            _mode: PhantomData,
+        }
+    }
+    
+    #[cfg(feature = "i2c")]
+    /// Build new Mpu9250 from current configuration using the provided device
+    pub fn build<E, I2C>(self, i2c: I2C) -> Mpu9250<I2cDevice<I2C>, MODE>
+        where I2C: i2c::Read<Error = E>
+                  + i2c::Write<Error = E>
+                  + i2c::WriteRead<Error = E>
+    {
+        let dev = I2cDevice::new(i2c);
+        Mpu9250 {
+            dev,
+            mag_sensitivity_adjustments: [0.0; 3],
+            raw_mag_sensitivity_adjustments: [0; 3],
+            gyro_scale: self.gyro_scale.unwrap_or_default(),
+            accel_scale: self.accel_scale.unwrap_or_default(),
+            mag_scale: self.mag_scale.unwrap_or_default(),
+            gyro_temp_data_rate: self.gyro_temp_data_rate.unwrap_or_default(),
+            accel_data_rate: self.accel_data_rate.unwrap_or_default(),
+            sample_rate_divisor: self.sample_rate_divisor,
+            dmp_configuration: self.dmp_configuration,
+            packet_size: self.dmp_configuration.map_or(0, |cfg| cfg.features.packet_size()),
+            _mode: PhantomData,
+        }
     }
 }
 
