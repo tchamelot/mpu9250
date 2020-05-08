@@ -120,7 +120,8 @@ pub struct Mpu9250<DEV, MODE> {
     gyro_temp_data_rate: GyroTempDataRate,
     accel_data_rate: AccelDataRate,
     sample_rate_divisor: Option<u8>,
-    dmp_configuration: Option<DmpConfiguration>,
+    #[cfg(feature = "dmp")]
+    dmp_configuration: DmpConfiguration,
     packet_size: usize,
     // mode
     _mode: PhantomData<MODE>,
@@ -561,7 +562,8 @@ impl<E, DEV> Mpu9250<DEV, Imu> where DEV: Device<Error = E>
                       gyro_temp_data_rate: config.gyro_temp_data_rate
                                                  .unwrap_or_default(),
                       sample_rate_divisor: config.sample_rate_divisor,
-                      dmp_configuration: config.dmp_configuration,
+                      #[cfg(feature = "dmp")]
+                      dmp_configuration: config.dmp_configuration.unwrap_or_default(),
                       packet_size: 0,
                       _mode: PhantomData };
         mpu9250.init_mpu(delay)?;
@@ -658,7 +660,8 @@ impl<E, DEV> Mpu9250<DEV, Marg>
                       gyro_temp_data_rate: config.gyro_temp_data_rate
                                                  .unwrap_or_default(),
                       sample_rate_divisor: config.sample_rate_divisor,
-                      dmp_configuration: config.dmp_configuration,
+                      #[cfg(feature = "dmp")]
+                      dmp_configuration: config.dmp_configuration.unwrap_or_default(),
                       packet_size: 0,
                       _mode: PhantomData };
         mpu9250.init_mpu(delay)?;
@@ -879,12 +882,8 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
                                 .unwrap_or(GyroTempDataRate::DlpfConf(Dlpf::_1)),
                       sample_rate_divisor: config.sample_rate_divisor
                                                  .or(Some(4)),
-                      dmp_configuration: Some(config.dmp_configuration
-                                                    .unwrap_or_default()),
-                      packet_size: config.dmp_configuration
-                                         .unwrap_or_default()
-                                         .features
-                                         .packet_size(),
+                      dmp_configuration: config.dmp_configuration.unwrap_or_default(),
+                      packet_size: dmp_packet_size(),
                       _mode: PhantomData };
         mpu9250.init_mpu(delay)?;
         mpu9250.init_dmp(delay, firmware)?;
@@ -898,7 +897,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
                    -> Result<(), Error<E>>
         where D: DelayMs<u8>
     {
-        let conf = self.dmp_configuration.unwrap_or_default();
+        let conf = self.dmp_configuration;
         // disable i2c master mode and enable fifo
         const FIFO_EN: u8 = 1 << 6;
         self.dev.write(Register::USER_CTRL, FIFO_EN)?;
@@ -1002,7 +1001,6 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
     fn set_dmp_feature<D>(&mut self, delay: &mut D) -> Result<(), Error<E>>
         where D: DelayMs<u8>
     {
-        let features = self.dmp_configuration.unwrap_or_default().features;
         const GYRO_SF: [u8; 4] = [(46_850_825 >> 24) as u8,
                                   (46_850_825 >> 16) as u8,
                                   (46_850_825 >> 8) as u8,
@@ -1012,12 +1010,12 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
 
         const CFG_15: u16 = 2727;
         let mut conf = [0xa3 as u8; 10];
-        if features.raw_accel {
+        if cfg!(feature = "dmp_accel") {
             conf[1] = 0xc0;
             conf[2] = 0xc8;
             conf[3] = 0xc2;
         }
-        if features.raw_gyro {
+        if cfg!(feature = "dmp_gyro") {
             conf[4] = 0xc4;
             conf[5] = 0xcc;
             conf[6] = 0xc6;
@@ -1025,7 +1023,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         self.write_mem(CFG_15, &conf)?;
 
         const CFG_27: u16 = 2742;
-        if features.tap | features.android_orient {
+        if cfg!(feature = "dmp_motion") {
             self.write_mem(CFG_27, &[0x20])?;
         } else {
             self.write_mem(CFG_27, &[0xd8])?;
@@ -1037,7 +1035,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
             [0xb8, 0xaa, 0xaa, 0xaa, 0xb0, 0x88, 0xc3, 0xc5, 0xc7];
         self.write_mem(CFG_MOTION_BIAS, &gyro_auto_calibrate)?;
 
-        if features.raw_gyro {
+        if cfg!(feature = "dmp_gyro") {
             const CFG_GYRO_RAW_DATA: u16 = 2722;
             let conf = if false {
                 // send cal gyro?
@@ -1050,7 +1048,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         }
 
         const CFG_20: u16 = 2224;
-        if features.tap {
+        if cfg!(feature = "dmp_motion") {
             self.write_mem(CFG_20, &[0xF8])?;
         // TODO handle tap
         } else {
@@ -1058,21 +1056,23 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         }
 
         const CFG_ANDROID_ORIENT: u16 = 1853;
-        if features.android_orient {
+        // Only true when orientation is activated
+        // The orientation feature is not handled yet
+        if false {
             self.write_mem(CFG_ANDROID_ORIENT, &[0xd9])?;
         } else {
             self.write_mem(CFG_ANDROID_ORIENT, &[0xd8])?;
         }
 
         const CFG_LP_QUAT: u16 = 2712;
-        if features.quat {
+        if cfg!(feature = "dmp_quat") {
             self.write_mem(CFG_LP_QUAT, &[0xc0, 0xc2, 0xc4, 0xc6])?;
         } else {
             self.write_mem(CFG_LP_QUAT, &[0x8b, 0x8b, 0x8b, 0x8b])?;
         }
 
         const CFG_8: u16 = 2718;
-        if features.quat6 {
+        if cfg!(feature = "dmp_quat6") {
             self.write_mem(CFG_8, &[0x20, 0x28, 0x30, 0x38])?;
         } else {
             self.write_mem(CFG_8, &[0xa3, 0xa3, 0xa3, 0xa3])?;
@@ -1085,11 +1085,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
 
     /// Reads and returns raw unscaled DMP measurement depending on 
     /// activated features(LSB).
-    pub fn dmp_unscaled_all<T1, T2>(&mut self) -> Result<UnscaledDmpMeasurement<T1, T2>, Error<E>>
-        where T1: From<[i16; 3]>, T2: From<[i32; 4]>
-    {
-        let features = self.dmp_configuration.unwrap().features;
-
+    pub fn dmp_unscaled_all(&mut self) -> Result<UnscaledDmpMeasurement, Error<E>> {
         let mut buffer: [u8; 33] = [0; 33];
         let read = self.read_fifo(&mut buffer[..self.packet_size + 1])?;
         if read == -(self.packet_size as isize) {
@@ -1099,22 +1095,17 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         }
 
         let mut offset = 0;
-        let mut measures: UnscaledDmpMeasurement<T1, T2> = UnscaledDmpMeasurement {
-            quaternion: None,
-            accel: None,
-            gyro: None
-        };
-        if features.quat6 || features.quat {
-            measures.quaternion = Some(self.to_quat(&buffer).into());
+        let mut measures: UnscaledDmpMeasurement = Default::default();
+        #[cfg(any(feature = "dmp_quat", feature = "dmp_quat6"))] {
+            measures.quaternion = self.to_quat(&buffer).into();
             offset += 16;
         }
-        if features.raw_accel {
-            measures.accel = Some(self.to_vector(&buffer, offset).into());
+        #[cfg(feature = "dmp_accel")] {
+            measures.accel = self.to_vector(&buffer, offset).into();
             offset += 6;
         }
-        if features.raw_gyro {
-            measures.gyro = Some(self.to_vector(&buffer, offset).into());
-            //offset += 6;
+        #[cfg(feature = "dmp_gyro")] {
+            measures.gyro = self.to_vector(&buffer, offset).into();
         }
         Ok(measures)
     }
@@ -1123,11 +1114,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
     /// Read all measurement from DMP
     /// Reads and returns DMP measurement scaled depending on 
     /// activated features(LSB).
-    pub fn dmp_all<T1, T2>(&mut self) -> Result<DmpMeasurement<T1, T2>, Error<E>>
-        where T1: From<[f32; 3]>, T2: From<[f64; 4]>
-    {
-        let features = self.dmp_configuration.unwrap().features;
-
+    pub fn dmp_all(&mut self) -> Result<DmpMeasurement, Error<E>> {
         let mut buffer: [u8; 33] = [0; 33];
         let read = self.read_fifo(&mut buffer[..self.packet_size + 1])?;
         if read == -(self.packet_size as isize) {
@@ -1137,22 +1124,17 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
         }
 
         let mut offset = 0;
-        let mut measures: DmpMeasurement<T1, T2> = DmpMeasurement {
-            quaternion: None,
-            accel: None,
-            gyro: None
-        };
-        if features.quat6 || features.quat {
-            measures.quaternion = Some(self.to_norm_quat(&buffer).into());
+        let mut measures: DmpMeasurement = Default::default();
+        #[cfg(any(feature = "dmp_quat", feature = "dmp_quat6"))] {
+            measures.quaternion = self.to_norm_quat(&buffer).into();
             offset += 16;
         }
-        if features.raw_accel {
-            measures.accel = Some(self.scale_accel(&buffer, offset).into());
+        #[cfg(feature = "dmp_accel")] {
+            measures.accel = self.scale_accel(&buffer, offset).into();
             offset += 6;
         }
-        if features.raw_gyro {
-            measures.gyro = Some(self.scale_gyro(&buffer, offset).into());
-            //offset += 6;
+        #[cfg(feature = "dmp_gyro")] {
+            measures.gyro = self.scale_gyro(&buffer, offset).into();
         }
         Ok(measures)
     }
@@ -1186,7 +1168,7 @@ impl<E, DEV> Mpu9250<DEV, Dmp> where DEV: Device<Error = E>
             f64::from(quat[0]),
             f64::from(quat[1]),
             f64::from(quat[2]),
-            f64::from(quat[2])
+            f64::from(quat[3])
         ];
         let sum = libm::sqrt(quat.iter().map(|x| libm::pow(*x, 2.0)).sum::<f64>());
         [
@@ -1246,6 +1228,7 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
         let accel_data_rate = self.accel_data_rate;
         let gyro_temp_data_rate = self.gyro_temp_data_rate;
         let sample_rate_divisor = self.sample_rate_divisor;
+        #[cfg(feature = "dmp")]
         let dmp_configuration = self.dmp_configuration;
         let packet_size = self.packet_size;
         let _mode = self._mode;
@@ -1259,6 +1242,7 @@ impl<E, DEV, MODE> Mpu9250<DEV, MODE> where DEV: Device<Error = E>
                          accel_data_rate,
                          gyro_temp_data_rate,
                          sample_rate_divisor,
+                         #[cfg(feature = "dmp")]
                          dmp_configuration,
                          packet_size,
                          _mode })
@@ -1796,34 +1780,42 @@ pub struct MargMeasurements<T> {
     pub temp: f32,
 }
 
+#[cfg(feature = "dmp")]
 /// DMP measurement scaled with respective scales and converted
 /// to appropriate units. Each measurement will be present only
 /// if the corresponding features is activated in [`dmp features`]
 ///
 /// [`dmp features`]: ./struct.DmpFeatures.html
-#[derive(Copy, Clone, Debug)]
-pub struct UnscaledDmpMeasurement<T1, T2> {
+#[derive(Copy, Clone, Debug, Default)]
+pub struct UnscaledDmpMeasurement {
+    #[cfg(any(feature = "dmp_quat", feature = "dmp_quat6"))]
     /// raw quaternion (LSB)
-    pub quaternion: Option<T2>,
+    pub quaternion: [i32; 4],
+    #[cfg(feature = "dmp_accel")]
     /// Accelerometer measurements (LSB)
-    pub accel: Option<T1>,
+    pub accel: [i16; 3],
+    #[cfg(feature = "dmp_gyro")]
     /// Gyroscope measurements (LSB)
-    pub gyro: Option<T1>,
+    pub gyro: [i16; 3],
 }
 
+#[cfg(feature = "dmp")]
 /// DMP measurement scaled with respective scales and converted
 /// to appropriate units. Each measurement will be present only
 /// if the corresponding features is activated in [`dmp features`]
 ///
 /// [`dmp features`]: ./struct.DmpFeatures.html
-#[derive(Copy, Clone, Debug)]
-pub struct DmpMeasurement<T1, T2> {
+#[derive(Copy, Clone, Debug, Default)]
+pub struct DmpMeasurement {
+    #[cfg(any(feature = "dmp_quat", feature = "dmp_quat6"))]
     /// Normalized quaternion
-    pub quaternion: Option<T2>,
+    pub quaternion: [f64; 4],
+    #[cfg(feature = "dmp_accel")]
     /// Accelerometer measurements (g)
-    pub accel: Option<T1>,
+    pub accel: [f32; 3],
+    #[cfg(feature = "dmp_gyro")]
     /// Gyroscope measurements (rad/s)
-    pub gyro: Option<T1>,
+    pub gyro: [f32; 3],
 }
 
 fn transpose<T, E>(o: Option<Result<T, E>>) -> Result<Option<T>, E> {

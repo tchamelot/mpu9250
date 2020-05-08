@@ -26,3 +26,8 @@ linux-embedded-hal = "0.2"
 i2c = []
 # Enable the use of the internal DMP features
 dmp = ["libm"]
+dmp_quat = ["dmp"]
+dmp_quat6 = ["dmp"]
+dmp_accel = ["dmp"]
+dmp_gyro = ["dmp"]
+dmp_motion = ["dmp"]

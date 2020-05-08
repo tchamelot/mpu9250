@@ -10,6 +10,7 @@ impl MpuMode for Marg {}
 
 /// Accelerometer + Gyroscope + Dmp
 #[cfg(feature = "dmp")]
+#[derive(Clone, Copy, Debug)]
 pub struct Dmp;
 #[cfg(feature = "dmp")]
 impl MpuMode for Dmp {}

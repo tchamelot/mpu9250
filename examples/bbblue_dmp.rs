@@ -3,6 +3,9 @@
 //! MPU9250 connected on I2C2. This requires the i2c feature flag
 //! for the mpu9250 crate.
 //!
+//! To enable the dmp feature, the dmp_quat6 feature flag
+//! is required for the mpu9250 crate.
+//!
 //! /!\ You will have to unexport the interrupt pin by yourself
 //! `sudo echo 117 > /sys/class/gpio/unexport`
 
@@ -36,11 +39,15 @@ fn main() {
         loop {
             match event.poll(1000).unwrap() {
                 Some(_) =>
-                    match mpu9250.dmp_all::<[f32; 3], [f64; 4]>() {
+                    match mpu9250.dmp_all() {
                         Ok(measure) => {
                             write!(&mut stdout,
-                                "\r{:?}",
-                                measure).unwrap();
+                                "\r{:>6.1} {:>6.1} {:>6.1} {:>6.1} ",
+                                measure.quaternion[0],
+                                measure.quaternion[1],
+                                measure.quaternion[2],
+                                measure.quaternion[3]
+                            );
                             stdout.flush().unwrap();
                         },
                         Err(Error::DmpDataNotReady) => (),
