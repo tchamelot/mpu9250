@@ -33,31 +33,32 @@ fn main() {
         let mut stdout = stdout.lock();
         writeln!(&mut stdout, "  Normalized quaternion").unwrap();
 
-        let mut mpu9250 =
-            Mpu9250::dmp_default(i2c, &mut Delay, &DMP_FIRMWARE).expect("unable to load firmware");
+        let mut mpu9250 = Mpu9250::dmp_default(i2c, &mut Delay, &DMP_FIRMWARE)
+            .expect("unable to load firmware");
 
         loop {
             match event.poll(1000).unwrap() {
-                Some(_) =>
-                    match mpu9250.dmp_all() {
-                        Ok(measure) => {
-                            write!(&mut stdout,
-                                "\r{:>6.1} {:>6.1} {:>6.1} {:>6.1} ",
-                                measure.quaternion[0],
-                                measure.quaternion[1],
-                                measure.quaternion[2],
-                                measure.quaternion[3]
-                            );
-                            stdout.flush().unwrap();
-                        },
-                        Err(Error::DmpDataNotReady) => (),
-                        Err(_) => (),
+                Some(_) => match mpu9250.dmp_all() {
+                    Ok(measure) => {
+                        write!(
+                            &mut stdout,
+                            "\r{:>6.1} {:>6.1} {:>6.1} {:>6.1} ",
+                            measure.quaternion[0],
+                            measure.quaternion[1],
+                            measure.quaternion[2],
+                            measure.quaternion[3]
+                        );
+                        stdout.flush().unwrap();
                     },
+                    Err(Error::DmpDataNotReady) => (),
+                    Err(_) => (),
+                },
                 None => {
                     write!(&mut stdout, "\nTimeout\n").unwrap();
                     mpu9250.reset_fifo(&mut Delay).unwrap();
-                }
+                },
             }
         }
-    }).unwrap();
+    })
+    .unwrap();
 }

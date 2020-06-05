@@ -24,9 +24,10 @@ use mpu9250::Mpu9250;
 
 fn main() {
     let mut spi = Spidev::open("/dev/spidev0.0").unwrap();
-    let options = SpidevOptions::new().max_speed_hz(1_000_000)
-                                      .mode(spidev::SPI_MODE_3)
-                                      .build();
+    let options = SpidevOptions::new()
+        .max_speed_hz(1_000_000)
+        .mode(spidev::SPI_MODE_3)
+        .build();
     spi.configure(&options).unwrap();
 
     let ncs = Pin::new(25);

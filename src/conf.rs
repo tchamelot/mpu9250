@@ -7,11 +7,17 @@ use super::types;
 use super::Mpu9250;
 
 extern crate embedded_hal as hal;
-use hal::blocking::spi;
+#[cfg(feature = "i2c")]
 use hal::blocking::i2c;
+#[cfg(not(feature = "i2c"))]
+use hal::blocking::spi;
+#[cfg(not(feature = "i2c"))]
 use hal::digital::v2::OutputPin;
 
-use super::device::{SpiDevice, I2cDevice, Device};
+#[cfg(feature = "i2c")]
+use super::device::I2cDevice;
+#[cfg(not(feature = "i2c"))]
+use super::device::SpiDevice;
 
 /// Controls the gyroscope and temperature sensor data rates and bandwidth.
 /// Can be either set to one of two FChoices, or to one of the 8
@@ -265,16 +271,20 @@ pub enum Orientation {
 impl Orientation {
     pub(crate) fn gyro_axes(&self) -> [u8; 3] {
         const AXES: [u8; 3] = [0x4c, 0xcd, 0x6c];
-        [AXES[*self as usize & 3],
-         AXES[(*self as usize >> 3) & 3],
-         AXES[(*self as usize >> 6) & 3]]
+        [
+            AXES[*self as usize & 3],
+            AXES[(*self as usize >> 3) & 3],
+            AXES[(*self as usize >> 6) & 3],
+        ]
     }
 
     pub(crate) fn accel_axes(&self) -> [u8; 3] {
         const AXES: [u8; 3] = [0x0c, 0xc9, 0x2c];
-        [AXES[*self as usize & 3],
-         AXES[(*self as usize >> 3) & 3],
-         AXES[(*self as usize >> 6) & 3]]
+        [
+            AXES[*self as usize & 3],
+            AXES[(*self as usize >> 3) & 3],
+            AXES[(*self as usize >> 6) & 3],
+        ]
     }
 
     pub(crate) fn gyro_signs(&self) -> [u8; 3] {
@@ -317,9 +327,21 @@ pub(crate) fn dmp_packet_size() -> usize {
     } else {
         0
     };
-    let accel = if cfg!(feature = "dmp_accel") { 6 } else { 0 };
-    let gyro = if cfg!(feature = "dmp_gyro") { 6 } else { 0 };
-    let motion = if cfg!(feature = "dmp_motion") { 4 } else {0 };
+    let accel = if cfg!(feature = "dmp_accel") {
+        6
+    } else {
+        0
+    };
+    let gyro = if cfg!(feature = "dmp_gyro") {
+        6
+    } else {
+        0
+    };
+    let motion = if cfg!(feature = "dmp_motion") {
+        4
+    } else {
+        0
+    };
     quat + accel + gyro + motion
 }
 
@@ -333,7 +355,7 @@ impl Default for DmpConfiguration {
     fn default() -> Self {
         DmpConfiguration {
             orientation: Default::default(),
-            rate: Default::default(), 
+            rate: Default::default(),
         }
     }
 }
@@ -364,15 +386,17 @@ impl MpuConfig<types::Imu> {
     /// [`AccelDataRate`]: ./enum.AccelDataRate.html
     /// [`GyroTempDataRate`]: ./enum.GyroTempDataRate.html
     pub fn imu() -> Self {
-        MpuConfig { gyro_scale: None,
-                    accel_scale: None,
-                    mag_scale: None,
-                    accel_data_rate: None,
-                    gyro_temp_data_rate: None,
-                    sample_rate_divisor: None,
-                    #[cfg(feature = "dmp")]
-                    dmp_configuration: None,
-                    _mode: PhantomData }
+        MpuConfig {
+            gyro_scale: None,
+            accel_scale: None,
+            mag_scale: None,
+            accel_data_rate: None,
+            gyro_temp_data_rate: None,
+            sample_rate_divisor: None,
+            #[cfg(feature = "dmp")]
+            dmp_configuration: None,
+            _mode: PhantomData,
+        }
     }
 }
 
@@ -390,15 +414,17 @@ impl MpuConfig<types::Marg> {
     /// [`AccelDataRate`]: ./enum.AccelDataRate.html
     /// [`GyroTempDataRate`]: ./enum.GyroTempDataRate.html
     pub fn marg() -> Self {
-        MpuConfig { gyro_scale: None,
-                    accel_scale: None,
-                    mag_scale: None,
-                    accel_data_rate: None,
-                    gyro_temp_data_rate: None,
-                    sample_rate_divisor: None,
-                    #[cfg(feature = "dmp")]
-                    dmp_configuration: None,
-                    _mode: PhantomData }
+        MpuConfig {
+            gyro_scale: None,
+            accel_scale: None,
+            mag_scale: None,
+            accel_data_rate: None,
+            gyro_temp_data_rate: None,
+            sample_rate_divisor: None,
+            #[cfg(feature = "dmp")]
+            dmp_configuration: None,
+            _mode: PhantomData,
+        }
     }
 }
 
@@ -419,15 +445,16 @@ impl MpuConfig<types::Dmp> {
     /// [`Dmp rate`]: ./enum.DmpRate.html
     /// [`orientation`]: ./enum.Orientation.html
     pub fn dmp() -> Self {
-        MpuConfig { gyro_scale: Some(GyroScale::_2000DPS),
-                    accel_scale: Some(AccelScale::_8G),
-                    mag_scale: None,
-                    accel_data_rate: Some(AccelDataRate::DlpfConf(Dlpf::_1)),
-                    gyro_temp_data_rate:
-                        Some(GyroTempDataRate::DlpfConf(Dlpf::_1)),
-                    sample_rate_divisor: Some(4),
-                    dmp_configuration: None,
-                    _mode: PhantomData }
+        MpuConfig {
+            gyro_scale: Some(GyroScale::_2000DPS),
+            accel_scale: Some(AccelScale::_8G),
+            mag_scale: None,
+            accel_data_rate: Some(AccelDataRate::DlpfConf(Dlpf::_1)),
+            gyro_temp_data_rate: Some(GyroTempDataRate::DlpfConf(Dlpf::_1)),
+            sample_rate_divisor: Some(4),
+            dmp_configuration: None,
+            _mode: PhantomData,
+        }
     }
 
     /// Sets dmp data output rate [`Dmp rate`]
@@ -437,9 +464,10 @@ impl MpuConfig<types::Dmp> {
         match self.dmp_configuration.as_mut() {
             Some(mut x) => x.rate = rate,
             None => {
-                self.dmp_configuration =
-                    Some(DmpConfiguration { rate,
-                                            ..Default::default() })
+                self.dmp_configuration = Some(DmpConfiguration {
+                    rate,
+                    ..Default::default()
+                })
             },
         }
         self
@@ -452,14 +480,14 @@ impl MpuConfig<types::Dmp> {
         match self.dmp_configuration.as_mut() {
             Some(mut x) => x.orientation = orientation,
             None => {
-                self.dmp_configuration =
-                    Some(DmpConfiguration { orientation,
-                                            ..Default::default() })
+                self.dmp_configuration = Some(DmpConfiguration {
+                    orientation,
+                    ..Default::default()
+                })
             },
         }
         self
     }
-
 }
 
 impl<MODE> MpuConfig<MODE> {
@@ -491,9 +519,10 @@ impl<MODE> MpuConfig<MODE> {
     /// ([`GyroTempDataRate`]).
     ///
     /// [`GyroTempDataRate`]: ./enum.GyroTempDataRate.html
-    pub fn gyro_temp_data_rate(&mut self,
-                               data_rate: GyroTempDataRate)
-                               -> &mut Self {
+    pub fn gyro_temp_data_rate(
+        &mut self,
+        data_rate: GyroTempDataRate,
+    ) -> &mut Self {
         self.gyro_temp_data_rate = Some(data_rate);
         self
     }
@@ -504,7 +533,7 @@ impl<MODE> MpuConfig<MODE> {
     /// rate. NOTE: This register is only effective when dlpf mode used for
     /// GyroTempDataRate see [`GyroTempDataRate`].
     /// SampleRate = InternalSampleRate / (1 + SMPLRT_DIV).
-    ///ave some time 
+    ///ave some time
     /// [`GyroTempDataRate`]: ./enum.GyroTempDataRate.html
     pub fn sample_rate_divisor(&mut self, smplrt_div: u8) -> &mut Self {
         self.sample_rate_divisor = Some(smplrt_div);
@@ -513,9 +542,14 @@ impl<MODE> MpuConfig<MODE> {
 
     #[cfg(not(feature = "i2c"))]
     /// Build new Mpu9250 from current configuration using the provided device
-    pub fn build<E, SPI, NCS>(self, spi: SPI, ncs: NCS) -> Mpu9250<SpiDevice<SPI, NCS>, MODE>
-        where SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
-              NCS: OutputPin
+    pub fn build<E, SPI, NCS>(
+        self,
+        spi: SPI,
+        ncs: NCS,
+    ) -> Mpu9250<SpiDevice<SPI, NCS>, MODE>
+    where
+        SPI: spi::Write<u8, Error = E> + spi::Transfer<u8, Error = E>,
+        NCS: OutputPin,
     {
         let dev = SpiDevice::new(spi, ncs);
 
@@ -535,13 +569,14 @@ impl<MODE> MpuConfig<MODE> {
             _mode: PhantomData,
         }
     }
-    
+
     #[cfg(feature = "i2c")]
     /// Build new Mpu9250 from current configuration using the provided device
     pub fn build<E, I2C>(self, i2c: I2C) -> Mpu9250<I2cDevice<I2C>, MODE>
-        where I2C: i2c::Read<Error = E>
-                  + i2c::Write<Error = E>
-                  + i2c::WriteRead<Error = E>
+    where
+        I2C: i2c::Read<Error = E>
+            + i2c::Write<Error = E>
+            + i2c::WriteRead<Error = E>,
     {
         let dev = I2cDevice::new(i2c);
         Mpu9250 {
